@@ -1,0 +1,10 @@
+# Project-local Postgres cluster, dumps, and load state.
+/.pg/
+
+# Nix / direnv
+/.direnv/
+result
+result-*
+
+# Editor
+/.idea/
