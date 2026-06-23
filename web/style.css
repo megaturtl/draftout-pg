@@ -1,0 +1,116 @@
+:root {
+    --bg: #15171a;
+    --fg: #e6e6e6;
+    --muted: #9aa0a8;
+    --panel: #1c1f24;
+    --border: #2e333a;
+    --hover: #21252b;
+}
+
+body {
+    font: 14px/1.5 system-ui, sans-serif;
+    margin: 2rem auto;
+    max-width: 62rem;
+    padding: 0 1rem;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+h1 {
+    font-size: 1.3rem;
+}
+
+input, button {
+    padding: .45rem .6rem;
+    font-size: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--fg);
+}
+
+button {
+    padding: .45rem .9rem;
+    cursor: pointer;
+}
+
+#msg {
+    margin-left: .6rem;
+    color: var(--muted);
+}
+
+#overview {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: .6rem;
+    margin: 1.2rem 0;
+}
+
+#overview h2 {
+    flex-basis: 100%;
+    margin: .2rem 0;
+    font-size: 1.1rem;
+}
+
+.card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .5rem .9rem;
+    min-width: 5.5rem;
+    background: var(--panel);
+}
+
+.card .k {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: var(--muted);
+}
+
+.card .v {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: .5rem;
+    font-variant-numeric: tabular-nums;
+}
+
+th, td {
+    padding: .3rem .55rem;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+    white-space: nowrap;
+}
+
+th:first-child, td:first-child {
+    text-align: left;
+}
+
+th {
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    cursor: pointer;
+    user-select: none;
+}
+
+th.s::after {
+    content: " \25BE";
+}
+
+th.s.a::after {
+    content: " \25B4";
+}
+
+tbody tr:hover {
+    background: var(--hover);
+}
+
+[hidden], #overview[hidden] {
+    display: none;
+}

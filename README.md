@@ -6,10 +6,18 @@ It only re-downloads when the dump has changed, and removes the zip after loadin
 
 All db state is kept in the `.pg` folder, delete this to fully reset.
 
-Configure the database (dump URL, db name, views file) using with the `# --- Config ---` block in `flake.nix`. 
+Configure the database (dump URL, db name, views file) using with the `# --- Config ---` block in `flake.nix`.
 
-Defaults:
+### Defaults
 - user = dev
 - password = dev
 - database = draftout
 - host = localhost:5432
+
+### Web explorer
+
+In the devshell run `python app.py` and open http://localhost:8000. Type any username to see a stats overview (games, W/D/L, elo, rank) and a sortable table of ratings quantifying their dominance in each goal (clear it, get beaten to it, speed vs the field).
+
+The backend is a simple `app.py` talking to the DB via `psql`.
+
+The frontend is plain html/css/js under `web/`.

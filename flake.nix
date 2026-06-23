@@ -16,7 +16,6 @@
         pgPassword = "dev";
         pgDatabase = "draftout";
         pgPort = "5432";
-        # Manifest listing the available dumps.
         manifestUrl = "https://deepdive-datadump.mittens.site/manifest.json";
         # SQL file to apply after every load (set to "" to skip).
         viewsFile = "views.sql";
@@ -35,9 +34,8 @@
       {
         devShells.default = pkgs.mkShell {
           # Cli tools for the devshell, the script carries its own build deps.
-          packages = [ pkgs.postgresql_17 pkgs.jq setup-db ];
+          packages = [ pkgs.postgresql_17 pkgs.jq pkgs.python3 setup-db ];
 
-          # Export env variables for setup-db and for interactive psql use.
           PGUSER = pgUser;
           PGPASSWORD = pgPassword;
           PGDATABASE = pgDatabase;

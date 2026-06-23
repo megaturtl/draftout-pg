@@ -1,6 +1,13 @@
 -- Views for the draftout dataset.
 -- Scope: competitive 1v1 matches, not soft-deleted, excluding 'cancelled'.
 
+-- Dropped first so column changes always re-apply cleanly: CREATE OR REPLACE
+-- can't alter a view's columns. CASCADE sorts out the dependency order.
+DROP VIEW IF EXISTS
+    v_matches, v_results, v_match_summary, v_player_stats, v_leaderboard,
+    v_match_records, v_goal_highlights CASCADE;
+DROP FUNCTION IF EXISTS player_goal_stats(text) CASCADE;
+
 -- Base: active competitive matches. Other views build on this.
 CREATE OR REPLACE VIEW v_matches AS
 SELECT id,
@@ -17,7 +24,7 @@ WHERE deleted_at IS NULL
   AND match_type = 'competitive'
   AND outcome <> 'cancelled';
 
--- Per-participant row with a W/D/L label. Building block for the player views.
+-- Per-participant row with a W/D/L label; feeds the player aggregates.
 CREATE OR REPLACE VIEW v_results AS
 SELECT m.id                                                                  AS match_id,
        m.completed_tz,
@@ -87,6 +94,7 @@ WITH cur AS (SELECT DISTINCT ON (uuid) uuid, elo_after AS current_elo
              WHERE elo_after IS NOT NULL
              ORDER BY uuid, match_id DESC)
 SELECT rank() OVER (ORDER BY cur.current_elo DESC) AS rank,
+       cur.uuid,
        s.username,
        cur.current_elo,
        s.peak_elo,
@@ -99,7 +107,7 @@ FROM cur
          JOIN v_player_stats s ON s.uuid = cur.uuid
 WHERE s.games >= 20;
 
--- Interesting match records. Duration uses real finished games.
+-- Match records; duration uses genuine finished games (not instant forfeits).
 CREATE OR REPLACE VIEW v_match_records AS
 SELECT *
 FROM ((SELECT 'Shortest finished match'    AS record,
@@ -112,7 +120,7 @@ FROM ((SELECT 'Shortest finished match'    AS record,
        FROM v_match_summary
        WHERE outcome = 'finished'
          AND duration_min > 0
-       ORDER BY duration_min ASC
+       ORDER BY duration_min
        LIMIT 1)
       UNION ALL
       (SELECT 'Longest finished match',
@@ -185,3 +193,64 @@ SELECT goal_id,
        round(100.0 * completed_when_picked / NULLIF(times_picked, 0), 1) AS complete_when_picked_pct,
        round(avg_complete_sec::numeric, 1)                               AS avg_complete_sec
 FROM g;
+
+-- === Per-player goal ratings  ===
+-- Used by the web explorer.
+--
+-- goal_rating (0-100, 50 = neutral) blends the two things that decide a pick:
+--   * race margin  (70%): regularized net head-to-head, (me - beaten)/(boards+5)
+--   * speed edge   (30%): how much faster than the field they clear it, capped +/-1
+CREATE OR REPLACE FUNCTION player_goal_stats(p_uuid text)
+    RETURNS TABLE
+            (
+                goal_id        text,
+                on_my_boards   bigint,
+                i_completed    bigint,
+                beaten         bigint,
+                my_pct         numeric,
+                beaten_pct     numeric,
+                my_fastest_sec numeric,
+                my_avg_sec     numeric,
+                field_avg_sec  numeric,
+                goal_rating    numeric
+            )
+    LANGUAGE sql
+    STABLE
+AS
+$$
+WITH my_matches AS (SELECT m.id
+                    FROM v_matches m
+                             JOIN participants p ON p.match_id = m.id
+                    WHERE p.uuid = p_uuid),
+     field AS (SELECT g.goal_id, avg(g.completed_at_ms / 1000.0) AS field_avg_sec
+               FROM match_goals g
+                        JOIN v_matches m ON m.id = g.match_id
+               WHERE g.completed
+                 AND g.completed_at_ms IS NOT NULL
+               GROUP BY g.goal_id),
+     agg AS (SELECT g.goal_id,
+                    count(*)                                                                        AS on_my_boards,
+                    count(*) FILTER (WHERE g.completed_by = p_uuid)                                 AS i_completed,
+                    count(*) FILTER (WHERE g.completed_by IS NOT NULL AND g.completed_by <> p_uuid) AS beaten,
+                    min(g.completed_at_ms / 1000.0) FILTER (WHERE g.completed_by = p_uuid)          AS my_fastest_sec,
+                    avg(g.completed_at_ms / 1000.0) FILTER (WHERE g.completed_by = p_uuid)          AS my_avg_sec
+             FROM match_goals g
+                      JOIN my_matches mm ON mm.id = g.match_id
+             GROUP BY g.goal_id
+             HAVING count(*) >= 5)
+SELECT a.goal_id,
+       a.on_my_boards,
+       a.i_completed,
+       a.beaten,
+       round(100.0 * a.i_completed / a.on_my_boards, 1),
+       round(100.0 * a.beaten / a.on_my_boards, 1),
+       round(a.my_fastest_sec, 1),
+       round(a.my_avg_sec, 1),
+       round(f.field_avg_sec, 1),
+       round(50 * (1
+           + 0.7 * (a.i_completed - a.beaten)::numeric / (a.on_my_boards + 5)
+           + 0.3 * greatest(-1, least(1, coalesce(-(a.my_avg_sec - f.field_avg_sec) / f.field_avg_sec, 0)))
+           ), 1)
+FROM agg a
+         LEFT JOIN field f ON f.goal_id = a.goal_id
+$$;

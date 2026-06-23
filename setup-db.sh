@@ -17,7 +17,6 @@ SHA_MARKER="$PG_DIR/.loaded_sha"
 
 mkdir -p "$PG_DIR"
 
-# 1. Initialise the cluster once.
 if [ ! -d "$PGDATA" ]; then
   echo ">> initialising postgres cluster"
   initdb \
@@ -28,7 +27,6 @@ if [ ! -d "$PGDATA" ]; then
     "$PGDATA" >/dev/null
 fi
 
-# 2. Start the server on localhost TCP.
 if ! pg_ctl status -D "$PGDATA" >/dev/null 2>&1; then
   echo ">> starting postgres on localhost:$PGPORT"
   pg_ctl start -D "$PGDATA" \
@@ -36,7 +34,7 @@ if ! pg_ctl status -D "$PGDATA" >/dev/null 2>&1; then
     -w -l "$PG_DIR/server.log" >/dev/null
 fi
 
-# 3. Look up the latest relational dump from the manifest. dumps[0] is the newest.
+# dumps[0] is the newest dump.
 echo ">> checking manifest for latest dump"
 MANIFEST=$(curl -fsSL "$MANIFEST_URL")
 read -r DUMP_URL DUMP_SHA DUMP_MIB < <(jq -r \
@@ -49,13 +47,12 @@ fi
 
 db_exists() { psql -lqt | cut -d '|' -f 1 | grep -qw "$PGDATABASE"; }
 
-# 4. Reload only when the database is missing or the dump has changed.
+# Reload only when the DB is missing or the dump changed.
 if db_exists && [ "$(cat "$SHA_MARKER" 2>/dev/null)" = "$DUMP_SHA" ]; then
   echo ">> $PGDATABASE already up to date (sha ${DUMP_SHA:0:12})"
 else
   echo ">> new dump available (sha ${DUMP_SHA:0:12}), reloading $PGDATABASE"
 
-  # Start from a clean database and rebuild.
   # --force evicts any open sessions (e.g. an IDE connection) so the drop succeeds.
   dropdb --if-exists --force "$PGDATABASE"
   createdb "$PGDATABASE"
@@ -77,14 +74,14 @@ else
   gzip -dc "$DUMP_TMP" | psql --quiet --dbname="$PGDATABASE" \
     --set ON_ERROR_STOP=0 >/dev/null
 
-  # Recreate views.
-  if [ -n "$VIEWS_FILE" ] && [ -f "$PWD/$VIEWS_FILE" ]; then
-    echo ">> (re)creating views from $VIEWS_FILE"
-    psql --quiet --dbname="$PGDATABASE" -f "$PWD/$VIEWS_FILE" >/dev/null
-  fi
-
   echo "$DUMP_SHA" > "$SHA_MARKER"
   echo ">> load complete"  # DUMP_TMP gets removed by the EXIT trap
+fi
+
+# Re-apply views every run so views.sql edits land without a full reload.
+if [ -n "$VIEWS_FILE" ] && [ -f "$PWD/$VIEWS_FILE" ]; then
+  echo ">> applying views from $VIEWS_FILE"
+  psql --quiet --dbname="$PGDATABASE" -f "$PWD/$VIEWS_FILE" >/dev/null
 fi
 
 echo ""
